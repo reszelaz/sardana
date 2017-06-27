@@ -57,6 +57,7 @@ requires = [
     'itango (>=0.0.1)',
     'taurus (>= 3.6.0)',
     'lxml (>=2.1)',
+    'ordereddict (>=1.1)'
 ]
 
 console_scripts = [
