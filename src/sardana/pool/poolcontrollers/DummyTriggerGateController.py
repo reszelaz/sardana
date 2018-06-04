@@ -21,6 +21,8 @@
 ##
 ##############################################################################
 
+import socket
+
 from sardana import State
 from sardana.util.funcgenerator import FunctionGenerator
 from sardana.pool.controller import TriggerGateController
@@ -34,12 +36,21 @@ class DummyTriggerGateController(TriggerGateController):
     gender = "Simulation"
     organization = "ALBA-Cells"
     MaxDevice = 1
+    HOST = 'localhost'
+    PORT = 50007
 
     def __init__(self, inst, props, *args, **kwargs):
         """Constructor"""
         TriggerGateController.__init__(self, inst, props, *args, **kwargs)
         self.tg = {}
         self.conf = {}
+        self._socket = None
+
+    def callback(self, _, type_, _):
+        name = type_.name.lower()
+        if name not in ("active", "passive"):
+            return
+        self._socket.sendall(name)
 
     def SynchOne(self, axis, conf):
         idx = axis - 1
@@ -79,6 +90,13 @@ class DummyTriggerGateController(TriggerGateController):
         pass
 
     def PreStartOne(self, axis, value=None):
+        idx = axis - 1
+        tg = self.tg[idx]
+        if self._socket is not None:
+            self._socket.close()
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.connect((self.HOST, self.PORT))
+        tg.addListener(self.callback)
         return True
 
     def StartOne(self, axis):
@@ -96,3 +114,4 @@ class DummyTriggerGateController(TriggerGateController):
         self._log.debug('AbortOne(%d): entering...' % axis)
         idx = axis - 1
         self.tg[idx].stop()
+        self.tg[idx].removeListener(self.callback)

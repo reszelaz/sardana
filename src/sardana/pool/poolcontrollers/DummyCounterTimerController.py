@@ -23,6 +23,9 @@
 
 import time
 import copy
+import socket
+import threading
+
 from sardana.sardanavalue import SardanaValue
 from sardana import State, DataAccess
 from sardana.pool import AcqSynch
@@ -57,12 +60,26 @@ class DummyCounterTimerController(CounterTimerController):
     MonitorMode = 2
     CounterMode = 3
 
+    HOST = "localhost"
+    PORT = 50007
+
     def __init__(self, inst, props, *args, **kwargs):
         CounterTimerController.__init__(self, inst, props, *args, **kwargs)
         self._synchronization = AcqSynch.SoftwareTrigger
         self._latency_time = 0
         self.channels = self.MaxDevice * [None, ]
         self.reset()
+        self._server_thread = None
+        self._socket = None
+        self._listen = False
+
+    def _server_loop(self, conn):
+        while self._listen:
+            data = conn.recv(1024)
+            if not data:
+                break
+            conn.sendall(data)
+        conn.close()
 
     def reset(self):
         self.start_time = None
@@ -207,6 +224,14 @@ class DummyCounterTimerController(CounterTimerController):
 
     def PreStartAll(self):
         self.counting_channels = {}
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.bind((self.HOST, self.PORT))
+        self._socket.listen(1)
+        conn, addr = self._socket.accept()
+        self._log.debug("Connected by %s" % addr)
+        self._server_thread = threading.Thread(target=self._server_loop(),
+                                               args=conn)
+        self._server_thread.start()
 
     def PreStartOne(self, ind, value=None):
         self._log.debug('PreStartOne(%d): entering...' % ind)
