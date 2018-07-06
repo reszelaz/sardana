@@ -222,10 +222,10 @@ class PoolPseudoCounter(PoolBaseGroup, PoolBaseChannel):
         self._siblings = None
         user_elements = kwargs.pop('user_elements')
         kwargs['elem_type'] = ElementType.PseudoCounter
-        # don't switch the order of constructors!
+        # init PoolBaseChannel first to initialize the logger
+        PoolBaseChannel.__init__(self, **kwargs)
         PoolBaseGroup.__init__(self, user_elements=user_elements,
                                pool=kwargs['pool'])
-        PoolBaseChannel.__init__(self, **kwargs)
 
     def serialize(self, *args, **kwargs):
         kwargs = PoolBaseChannel.serialize(self, *args, **kwargs)
