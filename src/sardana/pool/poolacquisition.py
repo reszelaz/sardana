@@ -671,24 +671,6 @@ class PoolAcquisitionBase(PoolAction):
                     msg = ("%s.StartAll() failed" % pool_ctrl.name)
                     raise Exception(msg)
 
-    def clear_value_buffers(self):
-        for channel in self._channels:
-            channel.clear_value_buffer()
-
-
-class PoolAcquisitionHardware(PoolAcquisitionBase):
-    """Acquisition action for controllers synchronized by hardware
-
-    .. note::
-        The PoolAcquisitionHardware class has been included in Sardana
-        on a provisional basis. Backwards incompatible changes
-        (up to and including removal of the module) may occur if
-        deemed necessary by the core developers.
-    """
-
-    def __init__(self, main_element, name="AcquisitionHardware"):
-        PoolAcquisitionBase.__init__(self, main_element, name)
-
     @DebugIt()
     def action_loop(self):
         i = 0
@@ -741,6 +723,22 @@ class PoolAcquisitionHardware(PoolAcquisitionBase):
                 state_info = acquirable._from_ctrl_state_info(state_info)
                 acquirable.set_state_info(state_info, propagate=2)
 
+    def clear_value_buffers(self):
+        for channel in self._channels:
+            channel.clear_value_buffer()
+
+
+class PoolAcquisitionHardware(PoolAcquisitionBase):
+    """Acquisition action for controllers synchronized by hardware
+
+    .. note::
+        The PoolAcquisitionHardware class has been included in Sardana
+        on a provisional basis. Backwards incompatible changes
+        (up to and including removal of the module) may occur if
+        deemed necessary by the core developers.
+    """
+    def __init__(self, main_element, name="AcquisitionHardware"):
+        PoolAcquisitionBase.__init__(self, main_element, name)
 
 class PoolAcquisitionSoftware(PoolAcquisitionBase):
     """Acquisition action for controllers synchronized by software
