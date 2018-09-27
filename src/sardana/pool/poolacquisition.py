@@ -740,6 +740,20 @@ class PoolAcquisitionHardware(PoolAcquisitionBase):
     def __init__(self, main_element, name="AcquisitionHardware"):
         PoolAcquisitionBase.__init__(self, main_element, name)
 
+
+class PoolAcquisitionSoftwareStart(PoolAcquisitionBase):
+    """Acquisition action for controllers started by software
+
+        .. note::
+            The PoolAcquisitionSoftwareStart class has been included in
+            Sardana on a provisional basis. Backwards incompatible changes
+            (up to and including removal of the module) may occur if
+            deemed necessary by the core developers.
+    """
+    def __init__(self, main_element, name="AcquisitionSoftwareStart"):
+        PoolAcquisitionBase.__init__(self, main_element, name)
+
+
 class PoolAcquisitionSoftware(PoolAcquisitionBase):
     """Acquisition action for controllers synchronized by software
 
