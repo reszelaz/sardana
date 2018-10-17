@@ -1303,54 +1303,5 @@ def createMacroNode(macro_name, params_def, macro_params):
     unify them and place in some common location.
     """
     macro_node = MacroNode(name=macro_name, params_def=params_def)
-    # Check if ParamRepeat used in advanced interface
-    new_interface = False
-    for param in macro_params:
-        if isinstance(param, list):
-            new_interface = True
-            break
-
-    if not new_interface:
-        param_nodes = macro_node.params()
-        contain_param_repeat = False
-        len_param_nodes = len(param_nodes)
-        for i, param_node in enumerate(param_nodes):
-            if isinstance(param_node, RepeatParamNode):
-                if contain_param_repeat:
-                    msg = "Only one repeat parameter is allowed"
-                    raise Exception(msg)
-                if i < len_param_nodes - 1:
-                    msg = "Repeat parameter must be the last one"
-                    raise Exception(msg)
-        # If ParamRepeat only one and as last parameter
-        # this ignores raw_parameters which exceeds the param_def
-        for param_node, param_raw in zip(param_nodes, macro_params):
-            if isinstance(param_node, SingleParamNode):
-                param_node.setValue(param_raw)
-            # the rest of the values are interpreted as repeat parameter
-            elif isinstance(param_node, RepeatParamNode):
-                params_info = param_node.paramsInfo()
-                params_info_len = len(params_info)
-                rep = 0
-                mem = 0
-                rest_raw = macro_params[i:]
-                for member_raw in rest_raw:
-                    repeat_node = param_node.child(rep)
-                    # add a new repeat node (this is needed when the raw values
-                    # fill more repeat nodes that the minimum number of
-                    # repetitions e.g. min=0
-                    if repeat_node is None:
-                        repeat_node = param_node.addRepeat()
-                    member_node = repeat_node.child(mem)
-                    if isinstance(member_node, RepeatParamNode):
-                        msg = ("Nested repeat parameters are not allowed")
-                        raise Exception(msg)
-                    member_node.setValue(member_raw)
-                    mem += 1
-                    mem %= params_info_len
-                    if mem == 0:
-                        rep += 1
-                break
-    else:
-        macro_node.fromList(macro_params)
+    macro_node.fromList(macro_params)
     return macro_node
