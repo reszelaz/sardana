@@ -1074,6 +1074,7 @@ class PoolAcquisitionSoftware(PoolAcquisitionBase):
             if acquirable in value_refs:
                 value_ref = value_refs[acquirable]
                 if is_value_error(value_ref):
+                    self.error(value_ref.exc_info)
                     self.error("Loop final read value ref error for: %s" %
                                acquirable.name)
                 acquirable.append_value_ref_buffer(value_ref, self._index)
