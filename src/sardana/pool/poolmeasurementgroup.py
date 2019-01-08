@@ -42,7 +42,8 @@ except ImportError:
     # TODO: For Taurus 4 compatibility
     from taurus.core.tango.tangovalidator import TangoAttributeNameValidator
 
-from sardana import State, ElementType, TYPE_EXP_CHANNEL_ELEMENTS
+from sardana import State, ElementType, TYPE_EXP_CHANNEL_ELEMENTS, DataType, \
+    DataFormat
 from sardana.sardanaevent import EventType
 from sardana.pool.pooldefs import AcqMode, SynchParam, AcqSynch, \
     SynchDomain, AcqSynchType
@@ -126,6 +127,34 @@ def _to_fqdn(name, logger=None):
                " Re-apply configuration in order to upgrade.")
         logger.warning(msg)
     return full_name
+
+
+def _get_ndim(attr_info):
+    dformat = attr_info.dformat
+    if dformat == DataFormat.Scalar:
+        ndim = 0
+    elif dformat == DataFormat.OneD:
+        ndim = 1
+    elif dformat == DataFormat.TwoD:
+        ndim = 2
+    return ndim
+
+
+def _get_type(attr_info):
+    dtype = attr_info.dtype
+    if dtype == DataType.Double:
+        return "float"
+    else:
+        msg = "{0} data type is not implemented".format(dtype)
+        raise NotImplementedError(msg)
+
+
+def _get_shape(attr_info):
+    try:
+        shape = attr_info.maxdimsize
+    except AttributeError:
+        shape = tuple()
+    return shape
 
 
 class ConfigurationItem(object):
@@ -823,22 +852,17 @@ class MeasurementConfiguration(object):
         source = channel.get_source()
         ndim = None
         ctype = channel.get_type()
-        if ctype == ElementType.CTExpChannel:
-            ndim = 0
-        elif ctype == ElementType.PseudoCounter:
-            ndim = 0
-        elif ctype == ElementType.ZeroDExpChannel:
-            ndim = 0
-        elif ctype == ElementType.OneDExpChannel:
-            ndim = 1
-        elif ctype == ElementType.TwoDExpChannel:
-            ndim = 2
-        elif ctype == ElementType.External:
+        if ctype == ElementType.External:
             config = channel.get_config()
             if config is not None:
                 ndim = int(config.data_format)
-        elif ctype == ElementType.IORegister:
-            ndim = 0
+                data_type = 'float64'
+                shape = tuple()
+        else:
+            value_info = channel.get_value_attribute()._get_info()
+            ndim = _get_ndim(value_info)
+            data_type = _get_type(value_info)
+            shape = _get_shape(value_info)
 
         # Definitively should be initialized by measurement group
         # index MUST be here already (asserting this in the following line)
@@ -858,11 +882,10 @@ class MeasurementConfiguration(object):
         channel_data['conditioning'] = channel_data.get('conditioning', '')
         channel_data['normalization'] = channel_data.get('normalization',
                                                          Normalization.No)
-        # TODO use real values
-        channel_data['data_type'] = channel_data.get('data_type', 'float64')
-        channel_data['data_units'] = channel_data.get('data_units', 'No unit')
+        channel_data['data_type'] = channel_data.get('data_type', data_type)
+        channel_data['data_units'] = channel_data.get('data_units', '')
         channel_data['nexus_path'] = channel_data.get('nexus_path', '')
-        channel_data['shape'] = channel_data.get('shape', [])
+        channel_data['shape'] = channel_data.get('shape', shape)
 
         if ctype != ElementType.External:
             ctrl_name = channel.controller.full_name

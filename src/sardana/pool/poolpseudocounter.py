@@ -212,6 +212,19 @@ class Value(SardanaAttribute):
             for acq_obj, value in values.items():
                 acq_obj.put_value(value, propagate=propagate)
 
+    def _get_info(self):
+        """Get attribute info from its definition in the controller
+
+        ..todo:: Think about storing this info in the attribute object itself
+        or about more generic way of extracting this info. Maybe a new class
+        for the controller's attributes?
+        """
+        obj = self.obj
+        from sardana.pool.poolmetacontroller import DataInfo
+        attr_info = obj.controller.get_axis_attributes(obj.axis)[self.name]
+        info = DataInfo.toDataInfo(self.name, attr_info)
+        return info
+
 
 class PoolPseudoCounter(PoolBaseGroup, PoolBaseChannel):
     """A class representing a Pseudo Counter in the Sardana Device Pool"""
