@@ -537,8 +537,10 @@ class PoolPseudoMotor(PoolBaseGroup, PoolElement):
         for pseudo, position in positions.items():
             pseudo_positions[pseudo.axis - 1] = position
         curr_physical_positions = self._position.get_physical_positions()
+        self.debug("start cal_all_physical")
         physical_positions = self.controller.calc_all_physical(pseudo_positions,
                                                                curr_physical_positions)
+        self.debug("end cal_all_physical")
         if physical_positions.error:
             raise PoolException("Cannot calculate motion: "
                                 "calc_all_physical raises exception",
@@ -550,13 +552,16 @@ class PoolPseudoMotor(PoolBaseGroup, PoolElement):
 
         if items is None:
             items = {}
+        self.debug("start checking limits")
         for new_position, element in zip(physical_positions.value, user_elements):
             if new_position is None:
                 raise PoolException("Cannot calculate motion: %s reports "
                                     "position to be None" % element.name)
             # TODO: get the configuration for an specific sardana class and
             # get rid of AttributeProxy - see sardana-org/sardana#663
+            self.debug("before creating AttributeProxy")
             config = AttributeProxy(element.name + '/position').get_config()
+            self.debug("after creating AttributeProxy")
             try:
                 high = float(config.max_value)
             except ValueError:
@@ -578,6 +583,7 @@ class PoolPseudoMotor(PoolBaseGroup, PoolElement):
 
             element.calculate_motion(new_position, items=items,
                                      calculated=calculated)
+        self.debug("end checking limits")
         return items
 
     def start_move(self, new_position):
