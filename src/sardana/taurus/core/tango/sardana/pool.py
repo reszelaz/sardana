@@ -1611,6 +1611,8 @@ class MeasurementGroup(PoolElement):
         return self._configuration
 
     def on_configuration_changed(self, evt_src, evt_type, evt_value):
+        print "\tMeasurementGroup.on_configuration_changed(%s, %s, %s)" % (
+            evt_src, evt_type, evt_value)
         if evt_type not in CHANGE_EVT_TYPES:
             return
         self.info("Configuration changed")

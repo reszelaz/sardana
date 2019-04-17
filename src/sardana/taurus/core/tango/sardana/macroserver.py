@@ -826,6 +826,8 @@ class BaseMacroServer(MacroServerDevice):
                      'MacroLibrary', 'Instrument', 'Meta', 'ParameterType'
 
     def on_environment_changed(self, evt_src, evt_type, evt_value):
+        print "\tBaseMacroServer.on_environment_changed(%s, %s, %s)" % (
+        evt_src, evt_type, evt_value)
         try:
             return self._on_environment_changed(evt_src, evt_type, evt_value)
         except Exception:
@@ -905,6 +907,8 @@ class BaseMacroServer(MacroServerDevice):
         return Factory().getDevice(element_info.full_name)
 
     def on_elements_changed(self, evt_src, evt_type, evt_value):
+        print "\tBaseMacroServer.on_elements_changed(%s, %s, %s)" % (evt_src,
+                                                                    evt_type, evt_value)
         try:
             return self._on_elements_changed(evt_src, evt_type, evt_value)
         except Exception:

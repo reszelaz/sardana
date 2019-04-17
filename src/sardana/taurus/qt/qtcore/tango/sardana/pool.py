@@ -64,6 +64,8 @@ class QMeasurementGroup(Qt.QObject, TangoDevice):
             return TangoDevice.__getattr__(self, name)
 
     def _configurationChanged(self, s, t, v):
+        print "\tQMeasurementGroup._configurationChanged(%s, %s, %s)" % (s,
+                                                                        t, v)
         if t == TaurusEventType.Config:
             return
         if TaurusEventType.Error:

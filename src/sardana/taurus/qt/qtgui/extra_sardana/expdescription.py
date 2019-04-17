@@ -369,6 +369,8 @@ class ExpDescriptionEditor(Qt.QWidget, TaurusBaseWidget):
 
     @QtCore.pyqtSlot()
     def _experimentConfigurationChanged(self):
+        print "\tExpDescriptionEditor._experimentConfigurationChanged: " \
+              "entering"
         self._diff = ''
         try:
             self._diff = self._getDiff()
@@ -394,6 +396,7 @@ class ExpDescriptionEditor(Qt.QWidget, TaurusBaseWidget):
             return []
 
         new_conf = door.getExperimentConfiguration()
+        print "\t_getDiff: new_conf=%s" % new_conf
         old_conf = self._localConfig
         return find_diff(new_conf, old_conf)
 

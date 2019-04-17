@@ -111,6 +111,8 @@ class QDoor(BaseDoor, Qt.QObject):
     def _elementsChanged(self):
         mntgrps = self.macro_server.getElementsOfType("MeasurementGroup")
         # one or more measurement group was deleted
+        print "QDoor._elementsChanged: mntgrps = %s; mntgrp_connected = %s" % \
+              (mntgrps, self._mntgrps_connected)
         mntgrp_changed = len(self._mntgrps_connected) > len(mntgrps)
         new_mntgrp_connected = []
         for name, mg in mntgrps.items():
@@ -152,6 +154,8 @@ class QDoor(BaseDoor, Qt.QObject):
 
     def _onExperimentConfigurationChanged(self, *args):
         conf = copy.deepcopy(BaseDoor.getExperimentConfiguration(self))
+        print "\tQDoor._onExperimentConfigurationChanged: emit " \
+              "experimentConfigurationChanged; sender = %s" % self.sender()
         self.experimentConfigurationChanged.emit(conf)
 
     def getExperimentConfigurationObj(self):
@@ -197,6 +201,7 @@ class QMacroServer(BaseMacroServer, Qt.QObject):
     #     return res
 
     def on_elements_changed(self, s, t, v):
+        print "\tQMacroServer.on_elements_changed(%s, %s, %s)" % (s, t, v)
         ret = added, removed, changed = \
             BaseMacroServer.on_elements_changed(self, s, t, v)
 
@@ -214,6 +219,7 @@ class QMacroServer(BaseMacroServer, Qt.QObject):
         return ret
 
     def on_environment_changed(self, s, t, v):
+        print "\tQMacroServer.on_environment_changed(%s, %s, %s)" % (s, t, v)
         ret = added, removed, changed = \
             BaseMacroServer.on_environment_changed(self, s, t, v)
         if added or removed or changed:
