@@ -207,6 +207,14 @@ class MacroServer(MSContainer, MSObject, SardanaElementManager, SardanaIDManager
             seq<str>
         """
         self.macro_manager.setMacroPath([p.rstrip(os.sep) for p in macro_path])
+        modules = self.macro_manager._modules
+        macros = {}
+        for _, module in modules.items():
+            for macro in module.get_macros():
+                macros[macro.name] = macro.serialize()
+            macros.update(macros)
+        evt = {"new": macros}
+        self.fire_event(EventType("ElementsChanged"), evt)
 
     # --------------------------------------------------------------------------
     # Recorder path related methods
