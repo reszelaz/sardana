@@ -455,22 +455,30 @@ class PoolElement(BaseElement, TangoDevice):
 
     @reservedOperation
     def start(self, *args, **kwargs):
+        self.debug("PoolElement.start: entering")
         evt_wait = self._getEventWait()
+        self.debug("PoolElement.start: before state connect")
         evt_wait.connect(self.getAttribute("state"))
+        self.debug("PoolElement.start: after state connect")
         evt_wait.lock()
         try:
+            self.debug("PoolElement.start: before waitEvent state != MOVING")
             evt_wait.waitEvent(DevState.MOVING, equal=False)
+            self.debug("PoolElement.start: after waitEvent state != MOVING")
             self.__go_time = 0
             self.__go_start_time = ts1 = time.time()
             self._start(*args, **kwargs)
             ts2 = time.time()
+            self.debug("PoolElement.start: before waitEvent state == MOVING")
             evt_wait.waitEvent(DevState.MOVING, after=ts1)
+            self.debug("PoolElement.start: after waitEvent state == MOVING")
         except:
             evt_wait.disconnect()
             raise
         finally:
             evt_wait.unlock()
         ts2 = evt_wait.getRecordedEvents().get(DevState.MOVING, ts2)
+        self.debug("PoolElement.start: leaving")
         return (ts2,)
 
     def waitFinish(self, timeout=None, id=None):
@@ -483,6 +491,7 @@ class PoolElement(BaseElement, TangoDevice):
         """
         # Due to taurus-org/taurus #573 we need to divide the timeout
         # in two intervals
+        self.debug("PoolElement.waitFinish: entering")
         if timeout is not None:
             timeout = timeout / 2.
         if id is not None:
@@ -490,13 +499,18 @@ class PoolElement(BaseElement, TangoDevice):
         evt_wait = self._getEventWait()
         evt_wait.lock()
         try:
+            self.debug("PoolElement.waitFinish: before waitEvent state != "
+                       "MOVING")
             evt_wait.waitEvent(DevState.MOVING, after=id, equal=False,
                                timeout=timeout, retries=1)
+            self.debug("PoolElement.waitFinish: after waitEvent state != "
+                       "MOVING")
         finally:
             self.__go_end_time = time.time()
             self.__go_time = self.__go_end_time - self.__go_start_time
             evt_wait.unlock()
             evt_wait.disconnect()
+        self.debug("PoolElement.waitFinish: leaving")
 
     @reservedOperation
     def go(self, *args, **kwargs):
