@@ -33,12 +33,15 @@ import json
 import operator
 import os.path
 
-import PyTango
+from tango import (DevState, DevBoolean, DevEncoded, DevVarStringArray,
+                   Util, DeviceProxy, AttrDataFormat)
+from tango.server import LatestDeviceImpl, attribute, command, device_property
 
 from taurus import Factory
 from taurus.core.util.containers import CaselessDict
 from taurus.core.util.codecs import CodecFactory
 from taurus.core.util.log import Logger, DebugIt
+from taurus.core.tango.tangovalidator import TangoAuthorityNameValidator
 
 from sardana import State, SardanaServer, ElementType, Interface, \
     TYPE_ACQUIRABLE_ELEMENTS, TYPE_PSEUDO_ELEMENTS
@@ -48,12 +51,70 @@ from sardana.tango.core.util import get_tango_version_number
 import collections
 
 
-class Pool(PyTango.Device_4Impl, Logger):
+class Pool(LatestDeviceImpl, Logger):
+
+    PoolPath = device_property(
+        dtype=DevVarStringArray,
+        default_value=[]
+        )
+    PythonPath = device_property(
+        dtype=DevVarStringArray,
+        default_value=[]
+        )
+    MotionLoop_SleepTime = device_property(
+        dtype=int,
+        default_value=POOL.Default_MotionLoop_SleepTime
+        )
+    MotionLoop_StatesPerPosition = device_property(
+        dtype=int,
+        default_value=POOL.Default_MotionLoop_StatesPerPosition
+        )
+    AcqLoop_SleepTime = device_property(
+        dtype=int,
+        default_value=POOL.Default_AcqLoop_SleepTime
+        )
+    AcqLoop_StatesPerValue = device_property(
+        dtype=int,
+        default_value=POOL.Default_AcqLoop_StatesPerValue
+        )
+    RemoteLog = device_property(
+        dtype=str
+        )
+    DriftCorrection = device_property(
+        dtype=bool,               
+        default_value=POOL.Default_DriftCorrection
+        )
+    InstrumentList = device_property(
+        dtype=DevVarStringArray, 
+        default_value=[]
+        )
+    LogstashHost = device_property(
+        dtype=str
+        )
+    LogstashPort = device_property(
+        dtype=int,
+        default_value=12345
+        )
+    LogstashCacheDbPath = device_property(
+        dtype=str
+        )
+    
+    ControllerLibList = attribute(dtype=str,
+                                  dformat=AttrDataFormat.SPECTRUM,
+                                  max_dim_x=4096,
+                                  fget="get_controller_lib_list"
+                                  )
+    instrumet_list = attribute(name="InstrumentList",
+                               dtype=str,
+                               dformat=AttrDataFormat.SPECTRUM,
+                               max_dim_x=4096,
+                               fget="get_instrument_list")
 
     ElementsCache = None
 
     def __init__(self, cl, name):
-        PyTango.Device_4Impl.__init__(self, cl, name)
+        LatestDeviceImpl.__init__(self, cl, name)
+        self._tango_properties = {}
         Logger.__init__(self, name)
         self.init(name)
         self.init_device()
@@ -68,17 +129,13 @@ class Pool(PyTango.Device_4Impl, Logger):
             alias = None
 
         if alias is None:
-            alias = PyTango.Util.instance().get_ds_inst_name()
+            alias = Util.instance().get_ds_inst_name()
 
         self._pool = POOL(self.get_full_name(), alias)
         self._pool.add_listener(self.on_pool_changed)
 
     def get_full_name(self):
         """Compose full name from the TANGO_HOST information and device name.
-
-        In case Sardana is used with Taurus 3 the full name is of format
-        "dbhost:dbport/<domain>/<family>/<member>" where dbhost may be either
-        FQDN or PQDN, depending on the TANGO_HOST configuration.
 
         In case Sardana is used with Taurus 4 the full name is of format
         "tango://dbhost:dbport/<domain>/<family>/<member>" where dbhost is
@@ -87,18 +144,16 @@ class Pool(PyTango.Device_4Impl, Logger):
         :return: this device full name
         :rtype: :obj:`str`
         """
-        db = PyTango.Util.instance().get_database()
-        db_name = db.get_db_host() + ":" + db.get_db_port()
-        # try to use Taurus 4 to retrieve FQDN
-        try:
-            from taurus.core.tango.tangovalidator import \
-                TangoAuthorityNameValidator
+        db = Util.instance().get_database()
+        db_host = db.get_db_host()
+        db_port = db.get_db_port()
+        if db_host == "" and db_port == "":
+            db_name = "nodb"
+        else:
+            db_name = host + ":" + db.get_db_port()
             db_name = "//%s" % db_name
             db_name, _, _ = TangoAuthorityNameValidator().getNames(db_name)
-        # if Taurus3 in use just continue
-        except ImportError:
-            pass
-        full_name = db_name + "/" + self.get_name()
+        full_name = db_name + "/" + super().get_name()
         return full_name
 
     @property
@@ -112,7 +167,9 @@ class Pool(PyTango.Device_4Impl, Logger):
 
     @DebugIt()
     def init_device(self):
-        self.set_state(PyTango.DevState.INIT)
+        #self.init(self.get_name())
+        print("init_device entering...")
+        self.set_state(DevState.INIT)
         self.get_device_properties(self.get_device_class())
         p = self.pool
         p.set_python_path(self.PythonPath)
@@ -148,7 +205,7 @@ class Pool(PyTango.Device_4Impl, Logger):
         self.set_change_event("Elements", True, False)
         # hold the monitor thread for now!
         # self.pool.monitor.resume()
-        self.set_state(PyTango.DevState.ON)
+        self.set_state(DevState.ON)
 
     def _recalculate_instruments(self):
         il = self.InstrumentList = list(self.InstrumentList)
@@ -173,30 +230,30 @@ class Pool(PyTango.Device_4Impl, Logger):
     def read_attr_hardware(self, data):
         pass
 
-    #@DebugIt()
-    def read_ControllerLibList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def ControllerLibList(self):
         info = self.pool.get_elements_str_info(ElementType.ControllerLibrary)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_ControllerClassList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def ControllerClassList(self):
         info = self.pool.get_elements_str_info(ElementType.ControllerClass)
-        attr.set_value(info)
+        return info
 
-    #@PyTango.DebugIt(show_args=True,show_ret=True)
-    def read_ControllerList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def ControllerList(self):
         info = self.pool.get_elements_str_info(ElementType.Controller)
-        attr.set_value(info)
-
-    def read_InstrumentList(self, attr):
+        return info
+    
+    def get_instrument_list(self):
         #instruments = self._pool.get_elements_by_type(ElementType.Instrument)
         #instrument_names = map(PoolInstrument.get_full_name, instruments)
         # attr.set_value(instrument_names)
         info = self.pool.get_elements_str_info(ElementType.Instrument)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_ExpChannelList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def ExpChannelList(self, attr):
         info = []
         info.extend(self.pool.get_elements_str_info(ElementType.CTExpChannel))
         info.extend(self.pool.get_elements_str_info(
@@ -206,45 +263,44 @@ class Pool(PyTango.Device_4Impl, Logger):
         info.extend(self.pool.get_elements_str_info(
             ElementType.TwoDExpChannel))
         info.extend(self.pool.get_elements_str_info(ElementType.PseudoCounter))
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_AcqChannelList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def AcqChannelList(self):
         info = self.pool.get_acquisition_elements_str_info()
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_MotorGroupList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def MotorGroupList(self):
         info = self.pool.get_elements_str_info(ElementType.MotorGroup)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_MotorList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def MotorList(self):
         info = self.pool.get_elements_str_info(ElementType.Motor)
         info.extend(self.pool.get_elements_str_info(ElementType.PseudoMotor))
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_TriggerGateList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def TriggerGateList(self):
         info = self.pool.get_elements_str_info(ElementType.TriggerGate)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_MeasurementGroupList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def MeasurementGroupList(self):
         info = self.pool.get_elements_str_info(ElementType.MeasurementGroup)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_IORegisterList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def IORegisterList(self):
         info = self.pool.get_elements_str_info(ElementType.IORegister)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
-    def read_ComChannelList(self, attr):
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def ComChannelList(self):
         info = self.pool.get_elements_str_info(ElementType.Communication)
-        attr.set_value(info)
+        return info
 
-    #@DebugIt()
     def getElements(self, cache=True):
         value = self.ElementsCache
         if cache and value is not None:
@@ -254,10 +310,10 @@ class Pool(PyTango.Device_4Impl, Logger):
         self.ElementsCache = value
         return value
 
-    #@DebugIt()
-    def read_Elements(self, attr):
+    @attribute(dtype=DevEncoded)
+    def Elements(self):
         element_list = self.getElements()
-        attr.set_value(*element_list)
+        return element_list
 
     def is_Elements_allowed(self, req_type):
         return True
@@ -296,7 +352,7 @@ class Pool(PyTango.Device_4Impl, Logger):
     def _get_acquirable_ids(self, elem_names):
         return self._get_interface_ids(Interface.Acquirable, elem_names)
 
-    #@DebugIt()
+    @command(dtype_in=DevVarStringArray)
     def CreateController(self, argin):
         kwargs = self._format_CreateController_arguments(argin)
         # TODO: Support in future sequence of elements
@@ -316,7 +372,7 @@ class Pool(PyTango.Device_4Impl, Logger):
         ctrl_class = td.ctrl_klass
 
         full_name = kwargs.get("full_name", auto_full_name.format(**kwargs))
-        util = PyTango.Util.instance()
+        util = Util.instance()
 
         # check that element doesn't exist yet
         self._check_element(name, full_name)
@@ -457,7 +513,7 @@ class Pool(PyTango.Device_4Impl, Logger):
                 continue
             attrs.append((attr_name, default_value))
         if attrs:
-            ctrl_proxy = PyTango.DeviceProxy(full_name)
+            ctrl_proxy = DeviceProxy(full_name)
             try:
                 ctrl_proxy.write_attributes(attrs)
             except:
@@ -473,7 +529,7 @@ class Pool(PyTango.Device_4Impl, Logger):
             for pseudo_counter_info in list(pseudo_counter_infos.values()):
                 self._create_single_element(pseudo_counter_info)
 
-    #@DebugIt()
+    @command(dtype_in=DevVarStringArray)
     def CreateInstrument(self, argin):
         instrument = self.pool.create_instrument(*argin)
         instrument_list = self.InstrumentList
@@ -481,23 +537,24 @@ class Pool(PyTango.Device_4Impl, Logger):
         instrument_list.append(instrument.instrument_class)
         instrument_list.append(instrument.full_name)
         instrument_list.append(instrument.id)
-        db = PyTango.Util.instance().get_database()
+        db = Util.instance().get_database()
         props = {'InstrumentList': instrument_list}
         db.put_device_property(self.get_name(), props)
 
-    #@DebugIt()
+    @command(dtype_in=DevVarStringArray)
     def CreateElement(self, argin):
         kwargs_seq = self._format_CreateElement_arguments(argin)
         for kwargs in kwargs_seq:
             self._create_single_element(kwargs)
 
+    @command(dtype_in=DevVarStringArray)
     def RenameElement(self, argin):
         old_name = argin[0]
         new_name = argin[1]
         self.pool.rename_element(old_name, new_name)
         # obtain normal name (without database) and apply new alias
         element = self.pool.get_element_by_name(new_name)
-        db = PyTango.Util.instance().get_database()
+        db = Util.instance().get_database()
         normal_name = '/'.join(element.full_name.split('/')[-3:])
         db.put_device_alias(normal_name, new_name)
 
@@ -537,7 +594,7 @@ class Pool(PyTango.Device_4Impl, Logger):
 
         self._check_element(name, full_name)
 
-        util = PyTango.Util.instance()
+        util = Util.instance()
 
         def create_element_cb(device_name):
             try:
@@ -573,7 +630,7 @@ class Pool(PyTango.Device_4Impl, Logger):
                            name, cb=create_element_cb)
 
         # Hack to register event abs change until tango bug #3151801 is solved
-        elem_proxy = PyTango.DeviceProxy(full_name)
+        elem_proxy = DeviceProxy(full_name)
         cfg = []
         if elem_type == ElementType.Motor:
             attr = elem_proxy.get_attribute_config_ex("position")[0]
@@ -611,7 +668,7 @@ class Pool(PyTango.Device_4Impl, Logger):
             cfg.append(attr)
         elif elem_type == ElementType.IORegister:
             attr = elem_proxy.get_attribute_config_ex("value")[0]
-            if attr.data_type != PyTango.DevBoolean:
+            if attr.data_type != DevBoolean:
                 attr.events.ch_event.abs_change = "1"
             cfg.append(attr)
         elem_proxy.set_attribute_config(cfg)
@@ -629,20 +686,20 @@ class Pool(PyTango.Device_4Impl, Logger):
                 continue
             attrs.append((attr_name, default_value))
         if attrs:
-            elem_proxy = PyTango.DeviceProxy(full_name)
+            elem_proxy = DeviceProxy(full_name)
             try:
                 elem_proxy.write_attributes(attrs)
             except:
                 self.warning("Error trying to write default value for "
                              "attribute(s)", exc_info=1)
 
-    #@DebugIt()
+    @command(dtype_in=DevVarStringArray)
     def CreateMotorGroup(self, argin):
         kwargs = self._format_CreateMotorGroup_arguments(argin)
         # TODO: Support in future sequence of elements
         kwargs = kwargs[0]
 
-        util = PyTango.Util.instance()
+        util = Util.instance()
 
         name = kwargs['name']
         kwargs['pool_name'] = self.pool.name
@@ -669,13 +726,13 @@ class Pool(PyTango.Device_4Impl, Logger):
 
         util.create_device("MotorGroup", full_name, name, cb=create_motgrp_cb)
 
-    #@DebugIt()
+    @command(dtype_in=DevVarStringArray)
     def CreateMeasurementGroup(self, argin):
         kwargs = self._format_CreateMeasurementGroup_arguments(argin)
         # TODO: Support in future sequence of elements
         kwargs = kwargs[0]
 
-        util = PyTango.Util.instance()
+        util = Util.instance()
 
         name = kwargs['name']
         kwargs['pool_name'] = self.pool.name
@@ -713,7 +770,7 @@ class Pool(PyTango.Device_4Impl, Logger):
 
     def _check_element(self, name, full_name):
         self.pool.check_element(name, full_name)
-        db = PyTango.Util.instance().get_database()
+        db = Util.instance().get_database()
         e = None
         try:
             db.import_device(name)
@@ -914,7 +971,7 @@ class Pool(PyTango.Device_4Impl, Logger):
         ret['elements'] = channels
         return [ret]
 
-    #@DebugIt()
+    @command(dtype_in=str)
     def DeleteElement(self, name):
         try:
             elem = self.pool.get_element(full_name=name)
@@ -938,14 +995,14 @@ class Pool(PyTango.Device_4Impl, Logger):
             il = self.InstrumentList
             idx = il.index(full_name)
             self.InstrumentList = il[:idx - 1] + il[idx + 2:]
-            db = PyTango.Util.instance().get_database()
+            db = Util.instance().get_database()
             props = {'InstrumentList': self.InstrumentList}
             db.put_device_property(self.get_name(), props)
         else:
-            util = PyTango.Util.instance()
+            util = Util.instance()
             util.delete_device(type_name, full_name)
 
-    #@DebugIt()
+    @command(dtype_in=str, dtype_out=str)
     def GetControllerClassInfo(self, names):
         if names.startswith('['):
             names = json.loads(names)
@@ -961,11 +1018,11 @@ class Pool(PyTango.Device_4Impl, Logger):
             ret.append(data)
         return json.dumps(ret)
 
-    #@DebugIt()
+    @command(dtype_in=str)
     def ReloadControllerLib(self, lib_name):
         self.pool.reload_controller_lib(lib_name)
 
-    #@DebugIt()
+    @command(dtype_in=str)
     def ReloadControllerClass(self, class_name):
         self.pool.reload_controller_class(class_name)
 
@@ -975,6 +1032,7 @@ class Pool(PyTango.Device_4Impl, Logger):
     def Abort(self):
         self.pool.abort()
 
+    @command(dtype_in=DevVarStringArray, dtype_out=str)
     def SendToController(self, stream):
         ctrl_name, stream = stream[:2]
         try:
@@ -983,6 +1041,7 @@ class Pool(PyTango.Device_4Impl, Logger):
             ctrl = self.pool.get_element_by_full_name(ctrl_name)
         return ctrl.send_to_controller(stream)
 
+    @command(dtype_in=str, dtype_out=DevVarStringArray)
     def GetFile(self, name):
         p = self.pool
         manager = p.ctrl_manager
@@ -990,15 +1049,18 @@ class Pool(PyTango.Device_4Impl, Logger):
         if lib is None:
             raise Exception("Unknown controller file '%s'", name)
         return lib.f_path, "".join(lib.getCode())
-
+    
+    @command(dtype_in=DevVarStringArray)
     def PutFile(self, file_data):
         p = self.pool
         manager = p.ctrl_manager
         manager.setControllerLib(*file_data)
 
+    @command(dtype_in=DevVarStringArray, dtype_out=DevVarStringArray)
     def GetControllerCode(self, argin):
         pass
-
+    
+    @command(dtype_in=DevVarStringArray)
     def SetControllerCode(self, argin):
         pass
 
@@ -1315,272 +1377,272 @@ Pool.Stop.__doc__ = STOP_DOC
 Pool.Abort.__doc__ = ABORT_DOC
 
 
-class PoolClass(PyTango.DeviceClass):
+#class PoolClass(PyTango.DeviceClass):
 
-    #    Class Properties
-    class_property_list = {
-    }
+       #Class Properties
+    #class_property_list = {
+    #}
 
     #    Device Properties
-    device_property_list = {
-        'PoolPath':
-            [PyTango.DevVarStringArray,
-             "list of directories to search for controllers (path separators "
-             "can be '\n' or character conventionally used by the OS to"
-             "separate search path components, such as ':' for POSIX"
-             "or ';' for Windows)",
-             []],
-        'PythonPath':
-            [PyTango.DevVarStringArray,
-             "list of directories to be appended to sys.path at startup (path "
-             "separators can be '\n' or ':')",
-             []],
-        'MotionLoop_SleepTime':
-            [PyTango.DevLong,
-             "Sleep time in the motion loop in mS [default: %dms]" %
-             int(POOL.Default_MotionLoop_SleepTime * 1000),
-             int(POOL.Default_MotionLoop_SleepTime * 1000)],
-        'MotionLoop_StatesPerPosition':
-            [PyTango.DevLong,
-             "Number of State reads done before doing a position read in the "
-             "motion loop [default: %d]" % POOL.Default_MotionLoop_StatesPerPosition,
-             POOL.Default_MotionLoop_StatesPerPosition],
-        'AcqLoop_SleepTime':
-            [PyTango.DevLong,
-             "Sleep time in the acquisition loop in mS [default: %dms]" %
-             int(POOL.Default_AcqLoop_SleepTime * 1000),
-             int(POOL.Default_AcqLoop_SleepTime * 1000)],
-        'AcqLoop_StatesPerValue':
-            [PyTango.DevLong,
-             "Number of State reads done before doing a value read in the "
-             "acquisition loop [default: %d]" % POOL.Default_AcqLoop_StatesPerValue,
-             POOL.Default_AcqLoop_StatesPerValue],
-        'RemoteLog':
-            [PyTango.DevString,
-             "Logging (python logging) host:port [default: None]",
-             None],
-        'DriftCorrection':
-            [PyTango.DevBoolean,
-             "Globally apply drift correction on pseudo motors (can be "
-             "overwritten at PseudoMotor level [default: %d]." %
-             POOL.Default_DriftCorrection,
-             POOL.Default_DriftCorrection],
-        'InstrumentList':
-            [PyTango.DevVarStringArray,
-             "List of instruments (internal property)",
-             []],
-        'LogstashHost':
-            [PyTango.DevString,
-             "Hostname where Logstash runs. "
-             "This property has been included in Sardana on a provisional "
-             "basis. Backwards incompatible changes (up to and including "
-             "its removal) may occur if deemed necessary by the "
-             "core developers.",
-             None],
-        'LogstashPort':
-            [PyTango.DevLong,
-             "Port on which Logstash will listen on events [default: 12345]. "
-             "This property has been included in Sardana on a provisional "
-             "basis. Backwards incompatible changes (up to and including "
-             "its removal) may occur if deemed necessary by the "
-             "core developers.",
-             12345],
-        'LogstashCacheDbPath':
-            [PyTango.DevString,
-             "Path to the Logstash cache database [default: None]. "
-             "It is advised not to use the database cache, as it may "
-             "have negative effects on logging performance. See #895. "
-             "This property has been included in Sardana on a provisional "
-             "basis. Backwards incompatible changes (up to and including "
-             "its removal) may occur if deemed necessary by the "
-             "core developers.",
-             None]
-    }
+    #device_property_list = {
+        #'PoolPath':
+            #[PyTango.DevVarStringArray,
+             #"list of directories to search for controllers (path separators "
+             #"can be '\n' or character conventionally used by the OS to"
+             #"separate search path components, such as ':' for POSIX"
+             #"or ';' for Windows)",
+             #[]],
+        #'PythonPath':
+            #[PyTango.DevVarStringArray,
+             #"list of directories to be appended to sys.path at startup (path "
+             #"separators can be '\n' or ':')",
+             #[]],
+        #'MotionLoop_SleepTime':
+            #[PyTango.DevLong,
+             #"Sleep time in the motion loop in mS [default: %dms]" %
+             #int(POOL.Default_MotionLoop_SleepTime * 1000),
+             #int(POOL.Default_MotionLoop_SleepTime * 1000)],
+        #'MotionLoop_StatesPerPosition':
+            #[PyTango.DevLong,
+             #"Number of State reads done before doing a position read in the "
+             #"motion loop [default: %d]" % POOL.Default_MotionLoop_StatesPerPosition,
+             #POOL.Default_MotionLoop_StatesPerPosition],
+        #'AcqLoop_SleepTime':
+            #[PyTango.DevLong,
+             #"Sleep time in the acquisition loop in mS [default: %dms]" %
+             #int(POOL.Default_AcqLoop_SleepTime * 1000),
+             #int(POOL.Default_AcqLoop_SleepTime * 1000)],
+        #'AcqLoop_StatesPerValue':
+            #[PyTango.DevLong,
+             #"Number of State reads done before doing a value read in the "
+             #"acquisition loop [default: %d]" % POOL.Default_AcqLoop_StatesPerValue,
+             #POOL.Default_AcqLoop_StatesPerValue],
+        #'RemoteLog':
+            #[PyTango.DevString,
+             #"Logging (python logging) host:port [default: None]",
+             #None],
+        #'DriftCorrection':
+            #[PyTango.DevBoolean,
+             #"Globally apply drift correction on pseudo motors (can be "
+             #"overwritten at PseudoMotor level [default: %d]." %
+             #POOL.Default_DriftCorrection,
+             #POOL.Default_DriftCorrection],
+        #'InstrumentList':
+            #[PyTango.DevVarStringArray,
+             #"List of instruments (internal property)",
+             #[]],
+        #'LogstashHost':
+            #[PyTango.DevString,
+             #"Hostname where Logstash runs. "
+             #"This property has been included in Sardana on a provisional "
+             #"basis. Backwards incompatible changes (up to and including "
+             #"its removal) may occur if deemed necessary by the "
+             #"core developers.",
+             #None],
+        #'LogstashPort':
+            #[PyTango.DevLong,
+             #"Port on which Logstash will listen on events [default: 12345]. "
+             #"This property has been included in Sardana on a provisional "
+             #"basis. Backwards incompatible changes (up to and including "
+             #"its removal) may occur if deemed necessary by the "
+             #"core developers.",
+             #12345],
+        #'LogstashCacheDbPath':
+            #[PyTango.DevString,
+             #"Path to the Logstash cache database [default: None]. "
+             #"It is advised not to use the database cache, as it may "
+             #"have negative effects on logging performance. See #895. "
+             #"This property has been included in Sardana on a provisional "
+             #"basis. Backwards incompatible changes (up to and including "
+             #"its removal) may occur if deemed necessary by the "
+             #"core developers.",
+             #None]
+    #}
 
     #    Command definitions
-    cmd_list = {
-        'CreateController':
-            [[PyTango.DevVarStringArray, CREATE_CONTROLLER_PAR_IN_DOC],
-             [PyTango.DevVoid, CREATE_CONTROLLER_PAR_OUT_DOC]],
-        'CreateElement':
-            [[PyTango.DevVarStringArray, CREATE_ELEMENT_PAR_IN_DOC],
-             [PyTango.DevVoid, CREATE_ELEMENT_PAR_OUT_DOC]],
-        'CreateInstrument':
-            [[PyTango.DevVarStringArray, CREATE_INSTRUMENT_PAR_IN_DOC],
-             [PyTango.DevVoid, CREATE_INSTRUMENT_PAR_OUT_DOC]],
-        'CreateMotorGroup':
-            [[PyTango.DevVarStringArray, CREATE_MOTOR_GROUP_PAR_IN_DOC],
-             [PyTango.DevVoid, CREATE_MOTOR_GROUP_PAR_OUT_DOC]],
-        'CreateMeasurementGroup':
-            [[PyTango.DevVarStringArray, CREATE_MEASUREMENT_GROUP_PAR_IN_DOC],
-             [PyTango.DevVoid, CREATE_MEASUREMENT_GROUP_PAR_OUT_DOC]],
-        'DeleteElement':
-            [[PyTango.DevString, DELETE_ELEMENT_PAR_IN_DOC],
-             [PyTango.DevVoid, DELETE_ELEMENT_PAR_OUT_DOC]],
-        'GetControllerClassInfo':
-            [[PyTango.DevString, GET_CONTROLLER_CLASS_INFO_PAR_IN_DOC],
-             [PyTango.DevString, GET_CONTROLLER_CLASS_INFO_PAR_OUT_DOC]],
-        'ReloadControllerLib':
-            [[PyTango.DevString, RELOAD_CONTROLLER_LIB_PAR_IN_DOC],
-             [PyTango.DevVoid, RELOAD_CONTROLLER_LIB_PAR_OUT_DOC]],
-        'ReloadControllerClass':
-            [[PyTango.DevString, RELOAD_CONTROLLER_CLASS_PAR_IN_DOC],
-             [PyTango.DevVoid, RELOAD_CONTROLLER_CLASS_PAR_OUT_DOC]],
-        'RenameElement':
-            [[PyTango.DevVarStringArray, RENAME_ELEMENT_PAR_IN_DOC],
-             [PyTango.DevVoid, RENAME_ELEMENT_PAR_OUT_DOC]],
-        'GetControllerCode':
-            [[PyTango.DevVarStringArray, "<Controller library name> [, <Controller class name>]"],
-             [PyTango.DevVarStringArray, "result is a sequence of 3 strings:\n"
-                "<full path and file name>, <code>, <line number>"]],
-        'SetControllerCode':
-            [[PyTango.DevVarStringArray, "<Controller library name>, <code> [, <Auto reload>=True]\n"
-                "- if controller library is a simple module name:\n"
-                "  - if it exists, it is overwritten, otherwise a new python "
-                "file is created in the directory of the first element in "
-                "the PoolPath property"
-                "- if controller library is the full path name:\n"
-                "  - if path is not in the PoolPath, an exception is thrown"
-                "  - if file exists it is overwritten otherwise a new file "
-                "is created"],
-             [PyTango.DevVoid, ""]],
-        'Stop':
-            [[PyTango.DevVoid, STOP_PAR_IN_DOC],
-             [PyTango.DevVoid, STOP_PAR_OUT_DOC]],
-        'Abort':
-            [[PyTango.DevVoid, ABORT_PAR_IN_DOC],
-             [PyTango.DevVoid, ABORT_PAR_OUT_DOC]],
-        'SendToController':
-            [[PyTango.DevVarStringArray, SEND_TO_CONTROLLER_PAR_IN_DOC],
-             [PyTango.DevString, SEND_TO_CONTROLLER_PAR_OUT_DOC]],
-        'GetFile':
-            [[PyTango.DevString, "name (may be module name, file name or full (with absolute path) file name"],
-             [PyTango.DevVarStringArray, "[complete(with absolute path) file name, file contents]"]],
-        'PutFile':
-            [[PyTango.DevVarStringArray, "[name (may be module name, file name or full (with absolute path) file name, file contents]"],
-             [PyTango.DevVoid, ""]],
-    }
+    #cmd_list = {
+        #'CreateController':
+            #[[PyTango.DevVarStringArray, CREATE_CONTROLLER_PAR_IN_DOC],
+             #[PyTango.DevVoid, CREATE_CONTROLLER_PAR_OUT_DOC]],
+        #'CreateElement':
+            #[[PyTango.DevVarStringArray, CREATE_ELEMENT_PAR_IN_DOC],
+             #[PyTango.DevVoid, CREATE_ELEMENT_PAR_OUT_DOC]],
+        #'CreateInstrument':
+            #[[PyTango.DevVarStringArray, CREATE_INSTRUMENT_PAR_IN_DOC],
+             #[PyTango.DevVoid, CREATE_INSTRUMENT_PAR_OUT_DOC]],
+        #'CreateMotorGroup':
+            #[[PyTango.DevVarStringArray, CREATE_MOTOR_GROUP_PAR_IN_DOC],
+             #[PyTango.DevVoid, CREATE_MOTOR_GROUP_PAR_OUT_DOC]],
+        #'CreateMeasurementGroup':
+            #[[PyTango.DevVarStringArray, CREATE_MEASUREMENT_GROUP_PAR_IN_DOC],
+             #[PyTango.DevVoid, CREATE_MEASUREMENT_GROUP_PAR_OUT_DOC]],
+        #'DeleteElement':
+            #[[PyTango.DevString, DELETE_ELEMENT_PAR_IN_DOC],
+             #[PyTango.DevVoid, DELETE_ELEMENT_PAR_OUT_DOC]],
+        #'GetControllerClassInfo':
+            #[[PyTango.DevString, GET_CONTROLLER_CLASS_INFO_PAR_IN_DOC],
+             #[PyTango.DevString, GET_CONTROLLER_CLASS_INFO_PAR_OUT_DOC]],
+        #'ReloadControllerLib':
+            #[[PyTango.DevString, RELOAD_CONTROLLER_LIB_PAR_IN_DOC],
+             #[PyTango.DevVoid, RELOAD_CONTROLLER_LIB_PAR_OUT_DOC]],
+        #'ReloadControllerClass':
+            #[[PyTango.DevString, RELOAD_CONTROLLER_CLASS_PAR_IN_DOC],
+             #[PyTango.DevVoid, RELOAD_CONTROLLER_CLASS_PAR_OUT_DOC]],
+        #'RenameElement':
+            #[[PyTango.DevVarStringArray, RENAME_ELEMENT_PAR_IN_DOC],
+             #[PyTango.DevVoid, RENAME_ELEMENT_PAR_OUT_DOC]],
+        #'GetControllerCode':
+            #[[PyTango.DevVarStringArray, "<Controller library name> [, <Controller class name>]"],
+             #[PyTango.DevVarStringArray, "result is a sequence of 3 strings:\n"
+                #"<full path and file name>, <code>, <line number>"]],
+        #'SetControllerCode':
+            #[[PyTango.DevVarStringArray, "<Controller library name>, <code> [, <Auto reload>=True]\n"
+                #"- if controller library is a simple module name:\n"
+                #"  - if it exists, it is overwritten, otherwise a new python "
+                #"file is created in the directory of the first element in "
+                #"the PoolPath property"
+                #"- if controller library is the full path name:\n"
+                #"  - if path is not in the PoolPath, an exception is thrown"
+                #"  - if file exists it is overwritten otherwise a new file "
+                #"is created"],
+             #[PyTango.DevVoid, ""]],
+        #'Stop':
+            #[[PyTango.DevVoid, STOP_PAR_IN_DOC],
+             #[PyTango.DevVoid, STOP_PAR_OUT_DOC]],
+        #'Abort':
+            #[[PyTango.DevVoid, ABORT_PAR_IN_DOC],
+             #[PyTango.DevVoid, ABORT_PAR_OUT_DOC]],
+        #'SendToController':
+            #[[PyTango.DevVarStringArray, SEND_TO_CONTROLLER_PAR_IN_DOC],
+             #[PyTango.DevString, SEND_TO_CONTROLLER_PAR_OUT_DOC]],
+        #'GetFile':
+            #[[PyTango.DevString, "name (may be module name, file name or full (with absolute path) file name"],
+             #[PyTango.DevVarStringArray, "[complete(with absolute path) file name, file contents]"]],
+        #'PutFile':
+            #[[PyTango.DevVarStringArray, "[name (may be module name, file name or full (with absolute path) file name, file contents]"],
+             #[PyTango.DevVoid, ""]],
+    #}
 
     #    Attribute definitions
-    attr_list = {
-        'InstrumentList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Motor list",
-                'description': "the list of instruments (a JSON encoded dict)",
-            }],
-        'ControllerList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Controller list",
-                'description': "the list of controllers (a JSON encoded dict)",
-            }],
-        'ExpChannelList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Experiment channel list",
-                'description': "The list of experiment channels (a JSON encoded dict)",
-            }],
-        'AcqChannelList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Acquisition channel list",
-                'description': "The list of all acquisition channels (a JSON encoded dict)",
-            }],
-        'MotorGroupList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Motor group list",
-                'description': "the list of motor groups (a JSON encoded dict)",
-            }],
-        'ControllerLibList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Controller library list",
-                'description': "the list of controller libraries (a JSON encoded dict)",
-            }],
-        'ControllerClassList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Controller class list",
-                'description': "the list of controller classes (a JSON encoded dict)",
-            }],
-        'MotorList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Motor list",
-                'description': "the list of motors (a JSON encoded dict)",
-            }],
-        'TriggerGateList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "TriggerGate list",
-                'description': "the list of trigger/gates (a JSON encoded dict)",
-            }],
-        'MeasurementGroupList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Measurement group list",
-                'description': "the list of measurement groups (a JSON encoded dict)",
-            }],
-        'IORegisterList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "IORegister list",
-                'description': "the list of IORegisters (a JSON encoded dict)",
-            }],
-        'ComChannelList':
-            [[PyTango.DevString,
-              PyTango.SPECTRUM,
-              PyTango.READ, 4096],
-             {
-                'label': "Communication channel list",
-                'description': "the list of communication channels (a JSON encoded dict)",
-            }],
-        'Elements':
-            [[PyTango.DevEncoded,
-              PyTango.SCALAR,
-              PyTango.READ],
-             {
-                'label': "Elements",
-                'description': "the list of all elements (a JSON encoded dict)",
-            }],
-    }
+    #attr_list = {
+        #'InstrumentList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Motor list",
+                #'description': "the list of instruments (a JSON encoded dict)",
+            #}],
+        #'ControllerList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Controller list",
+                #'description': "the list of controllers (a JSON encoded dict)",
+            #}],
+        #'ExpChannelList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Experiment channel list",
+                #'description': "The list of experiment channels (a JSON encoded dict)",
+            #}],
+        #'AcqChannelList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Acquisition channel list",
+                #'description': "The list of all acquisition channels (a JSON encoded dict)",
+            #}],
+        #'MotorGroupList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Motor group list",
+                #'description': "the list of motor groups (a JSON encoded dict)",
+            #}],
+        #'ControllerLibList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Controller library list",
+                #'description': "the list of controller libraries (a JSON encoded dict)",
+            #}],
+        #'ControllerClassList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Controller class list",
+                #'description': "the list of controller classes (a JSON encoded dict)",
+            #}],
+        #'MotorList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Motor list",
+                #'description': "the list of motors (a JSON encoded dict)",
+            #}],
+        #'TriggerGateList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "TriggerGate list",
+                #'description': "the list of trigger/gates (a JSON encoded dict)",
+            #}],
+        #'MeasurementGroupList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Measurement group list",
+                #'description': "the list of measurement groups (a JSON encoded dict)",
+            #}],
+        #'IORegisterList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "IORegister list",
+                #'description': "the list of IORegisters (a JSON encoded dict)",
+            #}],
+        #'ComChannelList':
+            #[[PyTango.DevString,
+              #PyTango.SPECTRUM,
+              #PyTango.READ, 4096],
+             #{
+                #'label': "Communication channel list",
+                #'description': "the list of communication channels (a JSON encoded dict)",
+            #}],
+        #'Elements':
+            #[[PyTango.DevEncoded,
+              #PyTango.SCALAR,
+              #PyTango.READ],
+             #{
+                #'label': "Elements",
+                #'description': "the list of all elements (a JSON encoded dict)",
+            #}],
+    #}
 
-    def __init__(self, name):
-        PyTango.DeviceClass.__init__(self, name)
-        self.set_type(name)
+    #def __init__(self, name):
+        #PyTango.DeviceClass.__init__(self, name)
+        #self.set_type(name)
 
-    def _get_class_properties(self):
-        return dict(ProjectTitle="Sardana", Description="Device Pool management class",
-                    doc_url="http://sardana-controls.org/",
-                    InheritedFrom="Device_4Impl")
+    #def _get_class_properties(self):
+        #return dict(ProjectTitle="Sardana", Description="Device Pool management class",
+                    #doc_url="http://sardana-controls.org/",
+                    #InheritedFrom="Device_4Impl")
 
-    def write_class_property(self):
-        util = PyTango.Util.instance()
-        db = util.get_database()
-        if db is None:
-            return
-        db.put_class_property(self.get_name(), self._get_class_properties())
+    #def write_class_property(self):
+        #util = PyTango.Util.instance()
+        #db = util.get_database()
+        #if db is None:
+            #return
+        #db.put_class_property(self.get_name(), self._get_class_properties())

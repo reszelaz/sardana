@@ -34,8 +34,9 @@ __docformat__ = 'restructuredtext'
 import time
 import threading
 
-import PyTango.constants
-from PyTango import Device_4Impl, DeviceClass, Util, DevState, \
+import tango.constants
+from tango.server import Device, LatestDeviceImpl
+from tango import Device_4Impl, DeviceClass, Util, DevState, \
     AttrQuality, TimeVal, ArgType, ApiUtil, DevFailed, WAttribute
 
 from taurus.core.util.threadpool import ThreadPool
@@ -66,7 +67,7 @@ def get_thread_pool():
         return __thread_pool
 
 
-class SardanaDevice(Device_4Impl, Logger):
+class SardanaDevice(Device, Logger):
     """SardanaDevice represents the base class for all Sardana
     :class:`PyTango.DeviceImpl` classes"""
 
@@ -74,10 +75,10 @@ class SardanaDevice(Device_4Impl, Logger):
         """Constructor"""
         self.in_constructor = True
         try:
-            Device_4Impl.__init__(self, dclass, name)
+            LatestDeviceImpl.__init__(self, dclass, name)
+            self._tango_properties = {}
             self.init(name)
             Logger.__init__(self, name)
-
             self._state = DevState.INIT
             self._status = 'Waiting to be initialized...'
 

@@ -34,10 +34,11 @@ __docformat__ = 'restructuredtext'
 
 import time
 
-from PyTango import Util, DevVoid, DevLong64, DevBoolean, DevString,\
+from tango import Util, DevVoid, DevLong64, DevBoolean, DevString,\
     DevDouble, DevEncoded, DevVarStringArray, DispLevel, DevState, SCALAR, \
     SPECTRUM, IMAGE, READ_WRITE, READ, AttrData, CmdArgType, DevFailed,\
     seqStr_2_obj, Except, ErrSeverity
+from tango.server import command, device_property
 
 from taurus.core.util.containers import CaselessDict
 from taurus.core.util.codecs import CodecFactory
@@ -52,6 +53,13 @@ from sardana.tango.core.util import GenericScalarAttr, GenericSpectrumAttr, \
 
 class PoolDevice(SardanaDevice):
     """Base Tango Pool device class"""
+
+    Id = device_property(dtype=int, doc="Internal ID",
+                         default_value=InvalidId)
+    Force_HW_Read = device_property(dtype=bool,
+                                    doc=("Force a hardware read of value "
+                                         "even when in operation (motion " "acquisition"),
+                                    default_value=False)
 
     #: list of extreme error states
     ExtremeErrorStates = DevState.FAULT, DevState.UNKNOWN
@@ -117,6 +125,7 @@ class PoolDevice(SardanaDevice):
         class"""
         SardanaDevice.delete_device(self)
 
+    @command
     def Abort(self):
         """The tango abort command. Aborts the active operation"""
         self.element.abort()
@@ -133,6 +142,7 @@ class PoolDevice(SardanaDevice):
         :rtype: bool"""
         return self.get_state() != DevState.UNKNOWN
 
+    @command
     def Stop(self):
         """The tango stop command. Stops the active operation"""
         self.element.stop()
@@ -450,6 +460,7 @@ class PoolDevice(SardanaDevice):
             self.warning("waited for operation")
             n = n - 1
 
+    @command
     def Restore(self):
         """Restore tango command. Restores the attributes to their former glory.
         This applies to memorized writable attributes which have a set point

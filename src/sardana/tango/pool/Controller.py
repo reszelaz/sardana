@@ -31,6 +31,8 @@ __docformat__ = 'restructuredtext'
 
 import time
 
+from tango import AttrDataFormat
+from tango.server import attribute, device_property, command
 from PyTango import Util, DevFailed, Except
 from PyTango import DevVoid, DevLong, DevString
 from PyTango import DevVarStringArray, DevVarLongArray
@@ -46,7 +48,7 @@ from sardana import State, SardanaServer
 from sardana.sardanaattribute import SardanaAttribute
 from sardana.tango.core.util import to_tango_attr_info
 
-from .PoolDevice import PoolDevice, PoolDeviceClass
+from .PoolDevice import PoolDevice#, PoolDeviceClass
 
 
 def to_bool(s):
@@ -54,6 +56,16 @@ def to_bool(s):
 
 
 class Controller(PoolDevice):
+    
+    Type = device_property(dtype=str),
+    Library = device_property(dtype=str)
+    Klass = device_property(dtype=str)
+    Role_ids = device_property(dtype=DevVarLongArray, default_value=[])
+    
+    LogLevel = attribute(dtype=int, access=READ_WRITE,
+                         memorized=True, label="Log level",
+                         display_level=DispLevel.EXPERT,
+                         fget="get_log_level", fset="set_log_level")
 
     def __init__(self, dclass, name):
         PoolDevice.__init__(self, dclass, name)
@@ -182,12 +194,15 @@ class Controller(PoolDevice):
             self._status = PoolDevice.dev_status(self)
         return self._status
 
-    def read_ElementList(self, attr):
-        attr.set_value(self.get_element_names())
+    @attribute(dtype=str, dformat=AttrDataFormat.SPECTRUM, max_dim_x=4096)
+    def ElementList(self):
+        return self.get_element_names()
 
+    @command(dtype_in=DevVarStringArray)
     def CreateElement(self, argin):
         pass
 
+    @command(dtype_in=str)
     def DeleteElement(self, argin):
         pass
 
@@ -249,50 +264,50 @@ class Controller(PoolDevice):
         attr_name = attr.get_name()
         self.ctrl.set_ctrl_attr(attr_name, v)
 
-    def read_LogLevel(self, attr):
+    def get_log_level(self):
         l = self.ctrl.get_log_level()
         self.debug(l)
-        attr.set_value(l)
+        return l
 
-    def write_LogLevel(self, attr):
-        self.ctrl.set_log_level(attr.get_write_value())
+    def set_log_level(self, level):
+        self.ctrl.set_log_level(level)
 
 
-class ControllerClass(PoolDeviceClass):
+#class ControllerClass(PoolDeviceClass):
 
-    #    Class Properties
-    class_property_list = {
-    }
-    class_property_list.update(PoolDeviceClass.class_property_list)
+       #Class Properties
+    #class_property_list = {
+    #}
+    #class_property_list.update(PoolDeviceClass.class_property_list)
 
-    #    Device Properties
-    device_property_list = {
-        'Type':           [DevString, "", None],
-        'Library':        [DevString, "", None],
-        'Klass':          [DevString, "", None],
-        'Role_ids':       [DevVarLongArray, "", []],
-    }
-    device_property_list.update(PoolDeviceClass.device_property_list)
+       #Device Properties
+    #device_property_list = {
+        #'Type':           [DevString, "", None],
+        #'Library':        [DevString, "", None],
+        #'Klass':          [DevString, "", None],
+        #'Role_ids':       [DevVarLongArray, "", []],
+    #}
+    #device_property_list.update(PoolDeviceClass.device_property_list)
 
-    #    Command definitions
-    cmd_list = {
-        'CreateElement': [[DevVarStringArray, ""], [DevVoid, ""]],
-        'DeleteElement': [[DevString, ""], [DevVoid, ""]],
-    }
-    cmd_list.update(PoolDeviceClass.cmd_list)
+       #Command definitions
+    #cmd_list = {
+        #'CreateElement': [[DevVarStringArray, ""], [DevVoid, ""]],
+        #'DeleteElement': [[DevString, ""], [DevVoid, ""]],
+    #}
+    #cmd_list.update(PoolDeviceClass.cmd_list)
 
-    #    Attribute definitions
-    attr_list = {
-        'ElementList':   [[DevString, SPECTRUM, READ, 4096]],
-        'LogLevel':      [[DevLong, SCALAR, READ_WRITE],
-                          {'Memorized': "true",
-                           'label': "Log level",
-                           'Display level': DispLevel.EXPERT}],
-    }
-    attr_list.update(PoolDeviceClass.attr_list)
+       #Attribute definitions
+    #attr_list = {
+        #'ElementList':   [[DevString, SPECTRUM, READ, 4096]],
+        #'LogLevel':      [[DevLong, SCALAR, READ_WRITE],
+                          #{'Memorized': "true",
+                           #'label': "Log level",
+                           #'Display level': DispLevel.EXPERT}],
+    #}
+    #attr_list.update(PoolDeviceClass.attr_list)
 
-    def _get_class_properties(self):
-        ret = PoolDeviceClass._get_class_properties(self)
-        ret['Description'] = "Controller device class"
-        ret['InheritedFrom'].insert(0, 'PoolDevice')
-        return ret
+    #def _get_class_properties(self):
+        #ret = PoolDeviceClass._get_class_properties(self)
+        #ret['Description'] = "Controller device class"
+        #ret['InheritedFrom'].insert(0, 'PoolDevice')
+        #return ret
