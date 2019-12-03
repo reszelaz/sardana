@@ -666,10 +666,7 @@ class GScan(Logger):
         for ci in channels_info:
             full_name = ci.full_name
             try:
-                # Use DeviceProxy instead of taurus to avoid crashes in Py3
-                # See: tango-controls/pytango#292
-                # channel = taurus.Device(full_name)
-                channel = PyTango.DeviceProxy(full_name)
+                channel = taurus.Device(full_name)
                 instrument = channel.instrument
             except Exception:
                 # full_name of external channels is the name of the attribute
@@ -2039,10 +2036,7 @@ class CAcquisition(object):
             full_name = channel_info["full_name"]
             name = channel_info["name"]
             try:
-                # Use DeviceProxy instead of taurus to avoid crashes in Py3
-                # See: tango-controls/pytango#292
-                # taurus.Device(full_name)
-                PyTango.DeviceProxy(full_name)
+                taurus.Device(full_name)
             except Exception:
                 # external channels are attributes so Device constructor fails
                 non_compatible_channels.append(name)
