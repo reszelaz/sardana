@@ -80,6 +80,20 @@ from sardana.taurus.core.tango.sardana.macro import createMacroNode
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+import cffi
+ffibuilder = cffi.FFI()
+ffibuilder.cdef("void* omni_thread_ensure_self();")
+lib = ffibuilder.verify(r"""
+    #include <omnithread.h>
+    #include <cstdio>
+    void* omni_thread_ensure_self()
+    {
+        return new omni_thread::ensure_self;
+    }
+    """,
+    source_extension='.cpp',
+    libraries=["omnithread"]
+)
 
 def islambda(f):
     """inspect doesn't come with islambda so I create one :-P"""
@@ -1518,6 +1532,7 @@ class MacroExecutor(Logger):
                    self._stopped, self._aborted)
 
     def __runXML(self):
+        es = lib.omni_thread_ensure_self()
         self.sendState(Macro.Running)
         try:
             self.__runStatelessXML()
