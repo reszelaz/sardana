@@ -46,6 +46,18 @@ def is_numerical(obj):
                 return True
     return False
 
+@insertTest(helper_name="count", test_method_doc="count with PC",
+            elements=["_test_ct_1_1", "_test_ct_1_2", "_test_pc_1_1"])
+@insertTest(helper_name="count", test_method_doc="count with Tango attribute",
+            elements=["_test_ct_1_1", "_test_mt_1_1/position"])
+@insertTest(helper_name="count", test_method_doc="count with 2D",
+            elements=["_test_ct_1_1", "_test_2d_1_1"])
+@insertTest(helper_name="count", test_method_doc="count with 1D",
+            elements=["_test_ct_1_1", "_test_1d_1_1"])
+@insertTest(helper_name="count", test_method_doc="count with 0D",
+            elements=["_test_ct_1_1", "_test_0d_1_1"])
+@insertTest(helper_name="count", test_method_doc="count with CT",
+            elements=["_test_ct_1_1"])
 
 @insertTest(helper_name="count", test_method_doc="count with PC",
             elements=["_test_ct_1_1", "_test_ct_1_2", "_test_pc_1_1"])
