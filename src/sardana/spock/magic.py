@@ -31,6 +31,7 @@ __all__ = ['expconf', 'showscan', 'spsplot', 'debug_completer',
            'post_mortem', 'macrodata', 'edmac', 'spock_late_startup_hook',
            'spock_pre_prompt_hook']
 
+from sardana.util.whichpython import which_python_executable
 from .genutils import MSG_DONE, MSG_FAILED
 from .genutils import get_ipapi
 from .genutils import page, get_door, get_macro_server, ask_yes_no, arg_split
@@ -45,11 +46,7 @@ def expconf(self, parameter_s=''):
         print("Error importing ExpDescriptionEditor "
               "(hint: is taurus extra_sardana installed?)")
         return
-    try:
-        doorname = get_door().name()
-    except TypeError:
-        # TODO: For Taurus 4 adaptation
-        doorname = get_door().fullname
+    doorname = get_door().fullname
     # =======================================================================
     # ugly hack to avoid ipython/qt thread problems #e.g. see
     # https://sourceforge.net/p/sardana/tickets/10/
@@ -64,7 +61,8 @@ def expconf(self, parameter_s=''):
     import subprocess
     import sys
     fname = sys.modules[ExpDescriptionEditor.__module__].__file__
-    args = ['python3', fname, doorname]
+    python_executable = which_python_executable()
+    args = [python_executable, fname, doorname]
     if parameter_s == '--auto-update':
         args.insert(2, parameter_s)
     subprocess.Popen(args)
@@ -85,7 +83,7 @@ def showscan(self, parameter_s=''):
     """
     params = parameter_s.split()
     door = get_door()
-    online, scan_nb = False, None
+    scan_nb = None
     if len(params) > 0:
         if params[0].lower() == 'online':
             try:
@@ -96,11 +94,8 @@ def showscan(self, parameter_s=''):
                 print("Error importing ShowScanOnline")
                 print(e)
                 return
-            try:
-                doorname = get_door().name()
-            except TypeError:
-                # TODO: For Taurus 4 adaptation
-                doorname = get_door().fullname
+
+            doorname = get_door().fullname
             # ===============================================================
             # ugly hack to avoid ipython/qt thread problems #e.g. see
             # https://sourceforge.net/p/sardana/tickets/10/
@@ -115,15 +110,14 @@ def showscan(self, parameter_s=''):
             import subprocess
             import sys
             fname = sys.modules[ShowScanOnline.__module__].__file__
-            args = ['python3', fname, doorname, '--taurus-log-level=error']
+            python_executable = which_python_executable()
+            args = [python_executable, fname, doorname,
+                    '--taurus-log-level=error']
             subprocess.Popen(args)
-
-        # show the scan plot, ignoring the plot configuration
-        elif params[0].lower() == 'online_raw':
-            online = True
+            return
         else:
             scan_nb = int(params[0])
-    door.show_scan(scan_nb, online=online)
+    door.show_scan(scan_nb)
 
 
 def spsplot(self, parameter_s=''):
